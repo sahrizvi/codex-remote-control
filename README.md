@@ -205,6 +205,19 @@ project whenever the worktree's session was idle.
 
 </details>
 
+## About the name
+
+**Remote Control is Claude Code's feature**, not Codex's — it is what lets you
+drive a Claude Code session on your machine from the Claude Code app. Codex has
+no equivalent.
+
+This plugin extends that reach: Claude gains the ability to read and address
+your Codex sessions, so Codex becomes controllable through Claude's Remote
+Control. The name describes the capability it borrows, not one Codex has.
+
+An independent, third-party project. Not affiliated with or endorsed by
+Anthropic or OpenAI.
+
 ## Requirements
 
 Python 3.7+, standard library only — no packages to install. The `codex` CLI
