@@ -34,15 +34,15 @@ def running_threads():
         return set()
     out = set()
     for line in ps.splitlines():
-        line = line.strip()
-        pid, _, args = line.partition(" ")
-        if pid in me or "codex_session" in args:
+        pid, _, args = line.strip().partition(" ")
+        if pid in me:
             continue
-        # the codex binary, not merely any line mentioning codex
-        if not re.search(r"(^|/)codex(\s|$)", args):
-            continue
-        m = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
-                      args)
+        # The uuid must be the OPERAND of `resume`, not merely present in the
+        # command line: `codex exec "look at <uuid>"` mentions one without
+        # running it, and would otherwise mark that session live.
+        m = re.search(r"(?:^|/)codex(?:\s+\S+)*?\s+resume\s+"
+                      r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                      r"[0-9a-f]{4}-[0-9a-f]{12})\b", args)
         if m:
             out.add(m.group(1))
     return out
@@ -95,6 +95,10 @@ def pick_session(thread=None, project=None, any_project=False, match=None):
     if not rows:
         return None, []
 
+    if project is not None and any_project:
+        print("error: --project and --any-project contradict each other",
+              file=sys.stderr)
+        return None, []
     explicit_project = project is not None
     project_real = os.path.realpath(project or os.getcwd())
 
@@ -129,7 +133,11 @@ def pick_session(thread=None, project=None, any_project=False, match=None):
             return None, all_sessions()[:5]
         confirmed = [r for r in rows if r[4]]
         tier = confirmed or rows
-        return tier[0], tier[1:4]
+        # Alternatives are every OTHER session in this project, not just the
+        # rest of the winning liveness tier: one confirmed and one unknown are
+        # both plausible answers to "tell codex X".
+        others = [r for r in rows if r[0] != tier[0][0]][:3]
+        return tier[0], others
 
     # 3. Otherwise prefer, in order, and report the also-rans so a caller
     #    that mutates state can refuse.
@@ -173,15 +181,19 @@ def tail_events(path, nbytes=4_000_000):
             fh.seek(0, os.SEEK_END)
             size = fh.tell()
             start = max(0, size - nbytes)
+            started_on_boundary = False
+            if start > 0:
+                fh.seek(start - 1)
+                started_on_boundary = fh.read(1) == b"\n"
             fh.seek(start)
             chunk = fh.read().decode("utf-8", "replace")
     except (OSError, ValueError):
         return
     lines = chunk.splitlines()
-    # Only the first line is suspect, and only when the seek landed mid-file.
-    # Dropping it unconditionally discards a real event on any file smaller
-    # than nbytes — which is every short or fresh session.
-    if start > 0:
+    # The first line is suspect only when the seek landed mid-record. If the
+    # byte before `start` is a newline, the chunk begins exactly on a record
+    # boundary and that line is complete — dropping it would lose a real event.
+    if start > 0 and not started_on_boundary:
         lines = lines[1:]
     for line in lines:
         try:
@@ -215,7 +227,8 @@ def summarize(path, n_msgs, n_cmds):
         if p.get("type") == "token_count":
             r = p.get("rate_limits")
             if isinstance(r, dict):
-                by_bucket[r.get("limit_id") or "?"] = r
+                lid = r.get("limit_id")
+                by_bucket[lid if isinstance(lid, str) else "?"] = r
         item = p.get("item") if isinstance(p.get("item"), dict) else None
         if not item:
             continue
@@ -223,7 +236,8 @@ def summarize(path, n_msgs, n_cmds):
         if kind == "AgentMessage":
             txt = item.get("text") or ""
             if not txt:
-                for c in item.get("content") or []:
+                content = item.get("content")
+                for c in (content if isinstance(content, (list, tuple)) else []):
                     if isinstance(c, dict) and isinstance(c.get("text"), str):
                         txt += c["text"]
             if not isinstance(txt, str):
@@ -243,6 +257,8 @@ def rel(ts):
         return "?"
     try:
         t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
     except Exception:
         return ts
     secs = (datetime.now(timezone.utc) - t).total_seconds()
@@ -268,8 +284,10 @@ def cmd_status(args):
     age = None
     if last_ts:
         try:
-            age = (datetime.now(timezone.utc) -
-                   datetime.fromisoformat(last_ts.replace("Z", "+00:00"))).total_seconds()
+            t = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            if t.tzinfo is None:          # a naive stamp cannot be subtracted
+                t = t.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - t).total_seconds()
         except Exception:
             age = None
 
@@ -290,7 +308,7 @@ def cmd_status(args):
         print(f"\nnote   : {len(alts)} other session(s) matched equally well — "
               f"pass --thread to be explicit:")
         for t, _f, c, _m, run in alts:
-            print(f"         {t}  {'running' if run else 'idle'}  {c}")
+            print(f"         {t}  {'confirmed live' if run else 'liveness unknown'}  {c}")
     print()
 
     if msgs:
@@ -308,16 +326,27 @@ def cmd_status(args):
     if buckets:
         print("\n=== rate limits ===")
         for lid, rl in sorted(buckets.items()):
+            if not isinstance(rl, dict):
+                continue
             for key, label in (("primary", "short window"), ("secondary", "weekly")):
                 w = rl.get(key)
-                if not w:
+                if not isinstance(w, dict):
                     continue
-                reset = datetime.fromtimestamp(w["resets_at"], tz=timezone.utc).astimezone()
-                pct = w["used_percent"]
-                flag = "  <-- EXHAUSTED" if pct >= 99 else ("  <-- nearly gone" if pct >= 90 else "")
-                print(f"  [{lid}] {label:12} {pct:.0f}% used, resets {reset:%a %H:%M %Z}{flag}")
-            c = rl.get("credits") or {}
-            if c and not c.get("unlimited"):
+                pct, resets = w.get("used_percent"), w.get("resets_at")
+                try:
+                    pct = float(pct)
+                    when = datetime.fromtimestamp(float(resets),
+                                                  tz=timezone.utc).astimezone()
+                    when = f"{when:%a %H:%M %Z}"
+                except (TypeError, ValueError, OSError, OverflowError):
+                    # A renamed or retyped field must cost us this line, not
+                    # the whole command.
+                    continue
+                flag = ("  <-- EXHAUSTED" if pct >= 99
+                        else "  <-- nearly gone" if pct >= 90 else "")
+                print(f"  [{lid}] {label:12} {pct:.0f}% used, resets {when}{flag}")
+            c = rl.get("credits")
+            if isinstance(c, dict) and not c.get("unlimited"):
                 print(f"  [{lid}] credits      balance {c.get('balance')}, "
                       f"has_credits={c.get('has_credits')}")
             if rl.get("rate_limit_reached_type"):
@@ -391,7 +420,7 @@ def cmd_meta(args):
 
     print(f"thread          : {thread}")
     print(f"project         : {cwd or '?'}")
-    print(f"state           : {'running' if running else 'idle/finished'}")
+    print(f"process         : {'confirmed live' if running else 'cannot tell'}")
     for key, label in (("name", "name"), ("model", "model"),
                        ("reasoning_effort", "reasoning effort"),
                        ("thread_source", "source"), ("agent_role", "agent role"),

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "codex-remote-control",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Remote-control your Codex CLI sessions from your phone, via Claude Code. Check status, tell working from stalled, steer a run, and track several sessions at once.",
   "author": {
     "name": "sahrizvi",

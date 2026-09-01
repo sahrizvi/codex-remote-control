@@ -2,6 +2,7 @@
 name: codex-remote-control
 description: "Inspect and address Codex CLI sessions from inside Claude Code. Use when the user asks what Codex is doing, whether it is stuck or idle, how far along it is, what its rate limits are, which Codex sessions exist or are running, what a session was asked to do, what model or reasoning effort it is using, or asks to tell/instruct/message a Codex session. Sessions can be found by uuid, by working directory, or by words in their opening prompt. Also use for 'check on codex', 'is codex still running', 'codex status', 'list codex sessions', 'what is the codex session in <dir> doing'."
 trigger: /codex-remote-control
+allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/codex_session.py *)
 ---
 
 # codex-remote-control
@@ -27,17 +28,7 @@ seconds old. Sending goes the other way, through `codex queue`.
 
 ```bash
 # Use an absolute path — this breaks from a subdirectory otherwise.
-# Installed as a plugin, the script lives in the plugin cache — NOT in any
-# project's .claude/skills. CLAUDE_PLUGIN_ROOT points at it; the fallbacks
-# cover a manual copy into a project or into ~/.claude/skills.
-S="${CLAUDE_PLUGIN_ROOT:-}/skills/codex-remote-control/codex_session.py"
-[ -f "$S" ] || S="$CLAUDE_PROJECT_DIR/.claude/skills/codex-remote-control/codex_session.py"
-[ -f "$S" ] || S="$HOME/.claude/skills/codex-remote-control/codex_session.py"
-# Fail with something a user can act on. Running a path that does not exist
-# gives "can't open file", which reads like a broken tool rather than a
-# broken install.
-[ -f "$S" ] || { echo "codex-remote-control: script not found. Reinstall with:"; \
-  echo "  claude plugin install codex-remote-control@codex-remote-control"; exit 1; }
+S="${CLAUDE_SKILL_DIR}/codex_session.py"
 
 python3 "$S" list                        # every session — find the one you want
 python3 "$S" list --titles               # with each session's opening prompt
