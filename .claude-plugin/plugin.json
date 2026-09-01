@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "codex-bridge",
+  "version": "0.1.0",
+  "description": "Remote-control your Codex CLI sessions from your phone, via Claude Code. Check status, tell working from stalled, steer a run, and track several sessions at once.",
+  "author": {
+    "name": "sahrizvi",
+    "email": "aqueel.h.rizvi@gmail.com"
+  },
+  "homepage": "https://github.com/sahrizvi/codex-bridge",
+  "repository": "https://github.com/sahrizvi/codex-bridge",
+  "license": "MIT",
+  "keywords": ["codex", "remote-control", "claude-code", "mobile", "agents"],
+  "skills": ["./skills"]
+}

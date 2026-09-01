@@ -27,6 +27,17 @@ sessions. Chain the two and Codex inherits the capability it does not have:
 ## Install
 
 ```bash
+claude plugin marketplace add sahrizvi/codex-bridge
+claude plugin install codex-bridge@codex-bridge
+```
+
+Restart Claude Code, connect Remote Control, and you are done. No
+configuration. Update later with `claude plugin update codex-bridge`.
+
+<details>
+<summary>Manual install, if you would rather not add a marketplace</summary>
+
+```bash
 git clone https://github.com/sahrizvi/codex-bridge /tmp/codex-bridge
 mkdir -p ~/.claude/skills
 cp -R /tmp/codex-bridge/skills/codex-bridge ~/.claude/skills/
@@ -37,8 +48,7 @@ skills are untouched; the only thing it can replace is an earlier copy of
 itself. For a single project instead, copy it into that repo's
 `.claude/skills/`.
 
-Start a new Claude Code session (skills are discovered at startup), connect
-Remote Control, and you are done. No configuration.
+</details>
 
 ## What you can do
 

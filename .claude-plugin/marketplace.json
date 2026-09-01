@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "codex-bridge",
+  "description": "Codex tooling for Claude Code. Remote-control running Codex CLI sessions from the Claude Code app: check status, tell working from stalled, steer a run, and track several at once.",
+  "owner": {
+    "name": "sahrizvi",
+    "email": "aqueel.h.rizvi@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "codex-bridge",
+      "source": "./",
+      "description": "Remote-control your Codex CLI sessions from your phone, via Claude Code."
+    }
+  ]
+}
