@@ -1,4 +1,4 @@
-# codex-bridge
+# codex-remote-control
 
 **Remote-control your Codex CLI sessions from your phone.**
 
@@ -6,7 +6,7 @@ Codex has no remote control. Start a long run and you are tethered to that
 terminal — you cannot check on it from the sofa, and you certainly cannot
 redirect it.
 
-Claude Code *does* have remote control, and a phone app. `codex-bridge` is a
+Claude Code *does* have remote control, and a phone app. `codex-remote-control` is a
 Claude Code skill that gives a Claude session eyes and hands on your Codex
 sessions. Chain the two and Codex inherits the capability it does not have:
 
@@ -16,7 +16,7 @@ sessions. Chain the two and Codex inherits the capability it does not have:
 │  Claude Code │        │  Claude Code session │
 │     app      │───────▶│          │           │
 └──────────────┘ Remote │          ▼           │
-                Control │    codex-bridge      │
+                Control │    codex-remote-control      │
                         │          │           │
                         │          ▼           │
                         │   Codex CLI session  │
@@ -27,23 +27,23 @@ sessions. Chain the two and Codex inherits the capability it does not have:
 ## Install
 
 ```bash
-claude plugin marketplace add sahrizvi/codex-bridge
-claude plugin install codex-bridge@codex-bridge
+claude plugin marketplace add sahrizvi/codex-remote-control
+claude plugin install codex-remote-control@codex-remote-control
 ```
 
 Restart Claude Code, connect Remote Control, and you are done. No
-configuration. Update later with `claude plugin update codex-bridge`.
+configuration. Update later with `claude plugin update codex-remote-control`.
 
 <details>
 <summary>Manual install, if you would rather not add a marketplace</summary>
 
 ```bash
-git clone https://github.com/sahrizvi/codex-bridge /tmp/codex-bridge
+git clone https://github.com/sahrizvi/codex-remote-control /tmp/codex-remote-control
 mkdir -p ~/.claude/skills
-cp -R /tmp/codex-bridge/skills/codex-bridge ~/.claude/skills/
+cp -R /tmp/codex-remote-control/skills/codex-remote-control ~/.claude/skills/
 ```
 
-This adds exactly one directory — `~/.claude/skills/codex-bridge`. Your other
+This adds exactly one directory — `~/.claude/skills/codex-remote-control`. Your other
 skills are untouched; the only thing it can replace is an earlier copy of
 itself. For a single project instead, copy it into that repo's
 `.claude/skills/`.
@@ -145,10 +145,10 @@ Remote control here is real but not symmetric:
 The skill is a thin wrapper around one script, which works standalone:
 
 ```bash
-python3 skills/codex-bridge/codex_session.py status   # what it's doing now
-python3 skills/codex-bridge/codex_session.py list     # every session
-python3 skills/codex-bridge/codex_session.py meta     # model, git, opening prompt
-python3 skills/codex-bridge/codex_session.py send "…" # queue an instruction
+python3 skills/codex-remote-control/codex_session.py status   # what it's doing now
+python3 skills/codex-remote-control/codex_session.py list     # every session
+python3 skills/codex-remote-control/codex_session.py meta     # model, git, opening prompt
+python3 skills/codex-remote-control/codex_session.py send "…" # queue an instruction
 ```
 
 Useful flags:

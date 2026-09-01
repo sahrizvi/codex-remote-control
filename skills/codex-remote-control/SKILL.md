@@ -1,10 +1,10 @@
 ---
-name: codex-bridge
+name: codex-remote-control
 description: "Inspect and address Codex CLI sessions from inside Claude Code. Use when the user asks what Codex is doing, whether it is stuck or idle, how far along it is, what its rate limits are, which Codex sessions exist or are running, what a session was asked to do, what model or reasoning effort it is using, or asks to tell/instruct/message a Codex session. Sessions can be found by uuid, by working directory, or by words in their opening prompt. Also use for 'check on codex', 'is codex still running', 'codex status', 'list codex sessions', 'what is the codex session in <dir> doing'."
-trigger: /codex-bridge
+trigger: /codex-remote-control
 ---
 
-# codex-bridge
+# codex-remote-control
 
 Watch and address running Codex CLI sessions.
 
@@ -27,7 +27,7 @@ seconds old. Sending goes the other way, through `codex queue`.
 
 ```bash
 # Use an absolute path — this breaks from a subdirectory otherwise.
-S="$CLAUDE_PROJECT_DIR/.claude/skills/codex-bridge/codex_session.py"
+S="$CLAUDE_PROJECT_DIR/.claude/skills/codex-remote-control/codex_session.py"
 
 python3 "$S" list                        # every session — find the one you want
 python3 "$S" list --titles               # with each session's opening prompt
