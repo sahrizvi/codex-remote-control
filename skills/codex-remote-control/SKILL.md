@@ -33,6 +33,11 @@ seconds old. Sending goes the other way, through `codex queue`.
 S="${CLAUDE_PLUGIN_ROOT:-}/skills/codex-remote-control/codex_session.py"
 [ -f "$S" ] || S="$CLAUDE_PROJECT_DIR/.claude/skills/codex-remote-control/codex_session.py"
 [ -f "$S" ] || S="$HOME/.claude/skills/codex-remote-control/codex_session.py"
+# Fail with something a user can act on. Running a path that does not exist
+# gives "can't open file", which reads like a broken tool rather than a
+# broken install.
+[ -f "$S" ] || { echo "codex-remote-control: script not found. Reinstall with:"; \
+  echo "  claude plugin install codex-remote-control@codex-remote-control"; exit 1; }
 
 python3 "$S" list                        # every session — find the one you want
 python3 "$S" list --titles               # with each session's opening prompt
