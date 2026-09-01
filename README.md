@@ -66,6 +66,20 @@ All of it is conversation. You never type a command.
 You get its own words, the commands it ran, and whether they succeeded — not a
 guess assembled from logs.
 
+### Steer a run without going to your desk
+
+> **You:** tell codex to run the full suite before committing anything else
+>
+> **Claude:** Queued to the session in `~/code/your-project`. It'll pick that
+> up when it next reads input.
+
+> **You:** tell it to stop after the current commit and push
+>
+> **Claude:** Queued.
+
+Redirect a run that has gone the wrong way, add a constraint you forgot, or
+tell it to wrap up — from a phone, mid-commute.
+
 ### Tell working apart from stuck apart from stalled
 
 > **You:** is it stuck?
@@ -81,20 +95,6 @@ guess assembled from logs.
 From outside the terminal, **working**, **idle**, and **silently out of
 budget** look identical. The third is the one that quietly costs you an
 afternoon, and it is the reason this exists.
-
-### Steer a run without going to your desk
-
-> **You:** tell codex to run the full suite before committing anything else
->
-> **Claude:** Queued to the session in `~/code/your-project`. It'll pick that
-> up when it next reads input.
-
-> **You:** tell it to stop after the current commit and push
->
-> **Claude:** Queued.
-
-Redirect a run that has gone the wrong way, add a constraint you forgot, or
-tell it to wrap up — from a phone, mid-commute.
 
 ### Keep track of several at once
 
