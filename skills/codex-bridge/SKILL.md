@@ -6,12 +6,22 @@ trigger: /codex-bridge
 
 # codex-bridge
 
-Watch and address a running Codex CLI session without leaving Claude Code.
+Watch and address running Codex CLI sessions.
+
+**Why this exists:** Codex has no remote control. Claude Code does. Used from
+a Remote Control session, this skill lets someone drive their Codex runs from
+the Claude Code app on their phone — Codex inherits a capability it lacks by
+being proxied through Claude.
+
+That shapes how to use it. The person asking is often not at the machine, may
+be on a phone, and wants a decision-shaped answer: is it working, is it stuck,
+is it out of budget, what did it just do, should I redirect it. Lead with
+that, not with raw output.
 
 Codex appends every session to a JSONL **rollout** file under
-`~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<thread-uuid>.jsonl`.
-Reading its tail is a near-live view: in testing the file's last entry was
-16 seconds old. Sending goes the other way, through `codex queue`.
+`~/.codex/sessions/YYYY/MM/DD/` and keeps metadata in `~/.codex/state_<N>.sqlite`.
+Reading the rollout tail is near-live: in testing its last entry was 16
+seconds old. Sending goes the other way, through `codex queue`.
 
 ## Usage
 
