@@ -15,17 +15,34 @@ CODEX_HOME = os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex"))
 
 
 def running_threads():
-    """Thread UUIDs of live `codex` processes."""
+    """Thread UUIDs positively identifiable as live from the process table.
+
+    This is a POSITIVE signal only. `codex resume <uuid>` puts the uuid in
+    argv; a plain `codex` launch does not, because the id is created
+    internally. So absence here means "could not tell", never "not running",
+    and callers must not report a session dead on this basis.
+
+    Our own process is excluded: this script's name contains "codex" and its
+    argv carries the uuid whenever --thread is passed, so a naive scan matches
+    itself and reports any named thread as live.
+    """
+    me = {str(os.getpid()), str(os.getppid())}
     try:
-        ps = subprocess.run(["ps", "axo", "args="],
+        ps = subprocess.run(["ps", "axo", "pid=,args="],
                             capture_output=True, text=True, timeout=10).stdout
     except Exception:
         return set()
     out = set()
     for line in ps.splitlines():
-        if "codex" not in line or "grep" in line:
+        line = line.strip()
+        pid, _, args = line.partition(" ")
+        if pid in me or "codex_session" in args:
             continue
-        m = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", line)
+        # the codex binary, not merely any line mentioning codex
+        if not re.search(r"(^|/)codex(\s|$)", args):
+            continue
+        m = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+                      args)
         if m:
             out.add(m.group(1))
     return out
@@ -42,7 +59,11 @@ def session_cwd(path):
 
 
 def all_sessions():
-    """Every rollout as (thread, path, cwd, mtime, running), newest first."""
+    """Every rollout as (thread, path, cwd, mtime, live), newest first.
+
+    `live` is True only when the process table positively confirms it; False
+    means UNKNOWN, not dead. See running_threads.
+    """
     live = running_threads()
     rows = []
     for f in glob.glob(os.path.join(CODEX_HOME, "sessions", "*", "*", "*",
@@ -50,10 +71,82 @@ def all_sessions():
         m = re.search(r"rollout-.*?-([0-9a-f-]{36})\.jsonl$", f)
         if not m:
             continue
+        try:
+            mtime = os.path.getmtime(f)      # may vanish between glob and stat
+        except OSError:
+            continue
         t = m.group(1)
-        rows.append((t, f, session_cwd(f), os.path.getmtime(f), t in live))
+        rows.append((t, f, session_cwd(f), mtime, t in live))
     rows.sort(key=lambda r: r[3], reverse=True)
     return rows
+
+
+def pick_session(thread=None, project=None, any_project=False, match=None):
+    """Choose a session, and refuse rather than guess when it is ambiguous.
+
+    Order of authority, deliberately: an explicit --thread wins outright, and
+    is then CHECKED against --project rather than silently overriding it. A
+    --match narrows the field but never overrules an explicit id.
+
+    Returns (row, alternatives). `alternatives` lists other plausible
+    candidates so callers can refuse; it is not merely the losing tier.
+    """
+    rows = all_sessions()
+    if not rows:
+        return None, []
+
+    explicit_project = project is not None
+    project_real = os.path.realpath(project or os.getcwd())
+
+    def in_project(r):
+        return r[2] and os.path.realpath(r[2]) == project_real
+
+    # 1. An explicit id is the strongest statement of intent.
+    if thread:
+        hit = [r for r in rows if r[0] == thread]
+        if not hit:
+            print(f"warning: no rollout for thread {thread}", file=sys.stderr)
+            return None, rows[:5]
+        row = hit[0]
+        if explicit_project and not in_project(row):
+            # Do not quietly ignore one of two contradictory instructions.
+            print(f"error: thread {thread} was started in {row[2]}, "
+                  f"not {project_real}", file=sys.stderr)
+            return None, []
+        return row, []
+
+    if match:
+        rows = [r for r in rows if matches_text(r[0], match, r[2])]
+        if not rows:
+            print(f"no session matching {match!r}", file=sys.stderr)
+            return None, []
+
+    # 2. An explicit directory is a FILTER on every path, including list.
+    if explicit_project:
+        rows = [r for r in rows if in_project(r)]
+        if not rows:
+            print(f"no session started in {project_real}", file=sys.stderr)
+            return None, all_sessions()[:5]
+        confirmed = [r for r in rows if r[4]]
+        tier = confirmed or rows
+        return tier[0], tier[1:4]
+
+    # 3. Otherwise prefer, in order, and report the also-rans so a caller
+    #    that mutates state can refuse.
+    tiers = [] if any_project else [[r for r in rows if r[4] and in_project(r)]]
+    tiers += [[r for r in rows if r[4]]]
+    if not any_project:
+        tiers += [[r for r in rows if in_project(r)]]
+    tiers += [rows]
+
+    for tier in tiers:
+        if tier:
+            # Alternatives are every OTHER recently-active session, not just
+            # the rest of this tier — a running session and an idle one are
+            # both plausible answers to "tell codex X".
+            others = [r for r in rows if r[0] != tier[0][0]][:3]
+            return tier[0], others
+    return None, []
 
 
 def matches_text(thread, needle, cwd):
@@ -69,83 +162,42 @@ def matches_text(thread, needle, cwd):
     return False
 
 
-def pick_session(thread=None, project=None, any_project=False, match=None):
-    """Choose a session, preferring: explicit id > running in this project >
-    running anywhere > most recent in this project > most recent anywhere.
-
-    Returns (row, alternatives). `alternatives` is non-empty when the choice
-    was ambiguous, so the caller can say so instead of silently guessing.
-    """
-    rows = all_sessions()
-    if not rows:
-        return None, []
-
-    if match:
-        # A description narrows the field first; precedence then applies
-        # within the matches, so "the review session" still prefers a
-        # running one over a stale one.
-        rows = [r for r in rows if matches_text(r[0], match, r[2])]
-        if not rows:
-            print(f"no session matching {match!r}", file=sys.stderr)
-            return None, []
-        if not project:
-            any_project = True
-
-    if thread:
-        hit = [r for r in rows if r[0] == thread]
-        if hit:
-            return hit[0], []
-        print(f"warning: no rollout for thread {thread}", file=sys.stderr)
-        return None, rows[:5]
-
-    explicit = project is not None
-    project = os.path.realpath(project or os.getcwd())
-
-    def in_project(r):
-        return r[2] and os.path.realpath(r[2]) == project
-
-    if explicit:
-        # An explicitly named directory is a FILTER, not a preference. Falling
-        # through to "running anywhere" would answer about a different project
-        # than the one asked about — silently, and plausibly.
-        scoped = [r for r in rows if in_project(r)]
-        if not scoped:
-            print(f"no session started in {project}", file=sys.stderr)
-            return None, rows[:5]
-        running = [r for r in scoped if r[4]]
-        tier = running or scoped
-        return tier[0], tier[1:4]
-
-    tiers = [] if any_project else [
-        [r for r in rows if r[4] and in_project(r)],   # running, here
-    ]
-    tiers += [[r for r in rows if r[4]]]               # running anywhere
-    if not any_project:
-        tiers += [[r for r in rows if in_project(r)]]  # recent, here
-    tiers += [rows]                                    # anything
-
-    for tier in tiers:
-        if tier:
-            # Ambiguous only if several candidates share the winning tier.
-            return tier[0], tier[1:4]
-    return None, []
-
-
 def tail_events(path, nbytes=4_000_000):
-    """Parse the last chunk of a rollout without loading the whole file."""
-    size = os.path.getsize(path)
-    with open(path, "rb") as fh:
-        fh.seek(max(0, size - nbytes))
-        chunk = fh.read().decode("utf-8", "replace")
-    lines = chunk.splitlines()[1:]          # first line is likely partial
+    """Parse the last chunk of a rollout without loading the whole file.
+
+    Tolerates the file vanishing or rotating mid-read: Codex owns these files
+    and may delete or migrate them while we look.
+    """
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            start = max(0, size - nbytes)
+            fh.seek(start)
+            chunk = fh.read().decode("utf-8", "replace")
+    except (OSError, ValueError):
+        return
+    lines = chunk.splitlines()
+    # Only the first line is suspect, and only when the seek landed mid-file.
+    # Dropping it unconditionally discards a real event on any file smaller
+    # than nbytes — which is every short or fresh session.
+    if start > 0:
+        lines = lines[1:]
     for line in lines:
         try:
-            yield json.loads(line)
+            d = json.loads(line)
         except Exception:
             continue
+        if isinstance(d, dict):     # a bare scalar or array is not an event
+            yield d
 
 
 def summarize(path, n_msgs, n_cmds):
+    """Messages, commands, rate-limit buckets and turn state from a rollout.
+
+    Every field is defensive: these are Codex's private formats, so a schema
+    change must degrade to less information rather than a traceback.
+    """
     msgs, cmds, last_ts = [], [], None
     # Codex emits token_count under several `limit_id` buckets. "codex" carries
     # the real primary/secondary windows; "premium" carries only a credits blob
@@ -155,12 +207,15 @@ def summarize(path, n_msgs, n_cmds):
     by_bucket, turn_done = {}, None
     for d in tail_events(path):
         last_ts = d.get("timestamp", last_ts)
-        p = d.get("payload", {}) or {}
+        p = d.get("payload") or {}
+        if not isinstance(p, dict):
+            continue
         if p.get("type") in ("task_complete", "task_started"):
             turn_done = p["type"] == "task_complete"
-        if p.get("type") == "token_count" and p.get("rate_limits"):
-            r = p["rate_limits"]
-            by_bucket[r.get("limit_id") or "?"] = r
+        if p.get("type") == "token_count":
+            r = p.get("rate_limits")
+            if isinstance(r, dict):
+                by_bucket[r.get("limit_id") or "?"] = r
         item = p.get("item") if isinstance(p.get("item"), dict) else None
         if not item:
             continue
@@ -168,9 +223,11 @@ def summarize(path, n_msgs, n_cmds):
         if kind == "AgentMessage":
             txt = item.get("text") or ""
             if not txt:
-                for c in item.get("content", []) or []:
-                    if isinstance(c, dict) and c.get("text"):
+                for c in item.get("content") or []:
+                    if isinstance(c, dict) and isinstance(c.get("text"), str):
                         txt += c["text"]
+            if not isinstance(txt, str):
+                txt = str(txt)
             if txt.strip():
                 msgs.append((d.get("timestamp"), txt.strip()))
         elif kind in ("CommandExecution", "LocalShellCall"):
@@ -208,14 +265,27 @@ def cmd_status(args):
     live = running_threads()
     msgs, cmds, buckets, turn_done, last_ts = summarize(path, args.messages, args.commands)
 
-    if thread not in live:
-        state = "NOT RUNNING (process gone)"
-    elif turn_done:
+    age = None
+    if last_ts:
+        try:
+            age = (datetime.now(timezone.utc) -
+                   datetime.fromisoformat(last_ts.replace("Z", "+00:00"))).total_seconds()
+        except Exception:
+            age = None
+
+    # State comes from the session's OWN events. The process table can only
+    # confirm liveness, never deny it (see running_threads), so it is reported
+    # as a separate line rather than folded into the verdict.
+    if turn_done:
         state = "IDLE — turn finished, waiting at the prompt"
+    elif age is not None and age > 900:
+        state = "STALLED? — mid-turn but silent for %d min" % (age // 60)
     else:
         state = "WORKING — mid-turn"
+    proc = "confirmed in process table" if running else "not confirmed (cannot tell)"
+
     print(f"thread : {thread}\nproject: {cwd or '?'}\n"
-          f"state  : {state}\nlast   : {rel(last_ts)}  ({last_ts})")
+          f"state  : {state}\nprocess: {proc}\nlast   : {rel(last_ts)}  ({last_ts})")
     if alts:
         print(f"\nnote   : {len(alts)} other session(s) matched equally well — "
               f"pass --thread to be explicit:")
@@ -365,10 +435,17 @@ def cmd_list(args):
     rows = all_sessions()
     if args.match:
         rows = [r for r in rows if matches_text(r[0], args.match, r[2])]
+    here = os.path.realpath(args.project or os.getcwd())
+    if args.project is not None:
+        # An explicitly named directory filters the listing. Previously it only
+        # moved the `*` marker, so `list --project /nowhere` showed everything.
+        rows = [r for r in rows if r[2] and os.path.realpath(r[2]) == here]
+        if not rows:
+            print(f"No Codex session was started in {here}")
+            return 1
     if not rows:
         print("No Codex sessions found under", CODEX_HOME)
         return 1
-    here = os.path.realpath(args.project or os.getcwd())
     shown = 0
     print(f"{'thread':38} {'state':8} {'last event':>12}  project")
     for thread, path, cwd, mtime, running in rows:
@@ -379,14 +456,15 @@ def cmd_list(args):
             break
         mark = "*" if cwd and os.path.realpath(cwd) == here else " "
         age = rel(datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat())
-        state = "running" if running else "idle"
+        state = "live" if running else "?"
         print(f"{mark}{thread} {state:8} {age:>12}  {cwd or '?'}")
         if meta:
             label = meta.get("name") or (meta.get("preview") or "").replace("\n", " ")
             if label:
                 print(f"{'':39}{'':8} {'':>12}  \u21b3 {label[:90]}")
         shown += 1
-    print("\n* = started in this directory. Use --thread <uuid> to target one.")
+    print("\n* = started in this directory.  live = confirmed in the process "
+          "table; ? = cannot tell.\nUse --thread <uuid> to target one.")
     return 0
 
 
@@ -396,28 +474,45 @@ def cmd_send(args):
     if not row:
         print("No matching Codex session found. Pass --thread explicitly.")
         return 1
-    thread, _path, cwd, _mtime, _running = row
-    live = running_threads()
-    if alts:
-        print("Refusing to guess: several sessions matched equally well.")
+    thread, path, cwd, _mtime, running = row
+
+    # Sending mutates another agent's work. Refuse whenever something else was
+    # plausibly meant, unless the caller named the thread outright.
+    if alts and not args.thread:
+        print("Refusing to guess — more than one session could be meant:")
         print(f"  {thread}  {cwd}   <- would have been chosen")
         for t, _f, c, _m, run in alts:
-            print(f"  {t}  {c}  ({'running' if run else 'idle'})")
-        print("\nRe-run with --thread <uuid>.")
+            print(f"  {t}  {c}  ({'confirmed running' if run else 'liveness unknown'})")
+        print("\nRe-run with --thread <uuid>, or --project <dir>.")
         return 1
+
+    if not running and not args.force:
+        print(f"Cannot confirm {thread} is running (Codex does not always put "
+              f"the session id in its argv, so this is often unknowable).")
+        print("Queue anyway with --force; the message waits until Codex reads it.")
+        return 1
+
     print(f"target : {thread}\nproject: {cwd}")
-    if thread not in live and not args.force:
-        print(f"Thread {thread} is not running; a queued message would sit unread.")
-        print("Re-run with --force to queue anyway.")
+    try:
+        res = subprocess.run(
+            # `--message=` (not `--message --`, which clap rejects) so a
+            # message beginning with "-" is not parsed as an option. Verified
+            # against codex 0.149.0.
+            ["codex", "queue", "--thread", thread, f"--message={args.message}"],
+            capture_output=True, text=True, timeout=60)
+    except FileNotFoundError:
+        print("error: `codex` is not on PATH — needed to queue a message.",
+              file=sys.stderr)
         return 1
-    res = subprocess.run(
-        ["codex", "queue", "--thread", thread, "--message", args.message],
-        capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print("error: `codex queue` did not return within 60s; nothing was queued.",
+              file=sys.stderr)
+        return 1
     sys.stdout.write(res.stdout)
     sys.stderr.write(res.stderr)
     if res.returncode == 0:
-        print(f"\nQueued to {thread}. Delivery is asynchronous — Codex picks it up when it")
-        print("next reads input. Confirm with: codex_session.py status")
+        print(f"\nQueued to {thread}. Delivery is asynchronous — Codex picks it up")
+        print("when it next reads input. Confirm with: codex_session.py status")
     return res.returncode
 
 

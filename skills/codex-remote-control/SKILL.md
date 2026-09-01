@@ -27,7 +27,12 @@ seconds old. Sending goes the other way, through `codex queue`.
 
 ```bash
 # Use an absolute path — this breaks from a subdirectory otherwise.
-S="$CLAUDE_PROJECT_DIR/.claude/skills/codex-remote-control/codex_session.py"
+# Installed as a plugin, the script lives in the plugin cache — NOT in any
+# project's .claude/skills. CLAUDE_PLUGIN_ROOT points at it; the fallbacks
+# cover a manual copy into a project or into ~/.claude/skills.
+S="${CLAUDE_PLUGIN_ROOT:-}/skills/codex-remote-control/codex_session.py"
+[ -f "$S" ] || S="$CLAUDE_PROJECT_DIR/.claude/skills/codex-remote-control/codex_session.py"
+[ -f "$S" ] || S="$HOME/.claude/skills/codex-remote-control/codex_session.py"
 
 python3 "$S" list                        # every session — find the one you want
 python3 "$S" list --titles               # with each session's opening prompt
@@ -184,5 +189,5 @@ working tree, and the relevant code before repeating it as fact.
 ## Requirements
 
 - `codex` CLI on `PATH` (only needed for `send`; `status` reads files directly)
-- Python 3.9+
+- Python 3.7+
 - Set `CODEX_HOME` if Codex is not at `~/.codex`

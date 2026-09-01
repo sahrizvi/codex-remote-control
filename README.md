@@ -136,8 +136,13 @@ Remote control here is real but not symmetric:
   the window resets.
 - **You see what Codex says and does, never what it is thinking.** Its
   reasoning is encrypted in the session log.
-- **It refuses to guess.** If several sessions match, or the target isn't
-  running, it says so rather than instructing the wrong agent.
+- **It refuses to guess.** If more than one session could be meant, it lists
+  them and stops rather than instructing the wrong agent.
+- **Liveness is often unknowable.** Codex only puts a session id in its command
+  line for `codex resume`; a plain `codex` launch does not. So "confirmed
+  running" is a positive signal, and its absence means *cannot tell* — never
+  *dead*. State itself comes from the session's own events, which are
+  reliable.
 
 <details>
 <summary><b>Using it from a terminal, without Claude</b></summary>
