@@ -27,49 +27,91 @@ sessions. Chain the two and Codex inherits the capability it does not have:
 ## Install
 
 ```bash
-git clone https://github.com/sahrizvi/codex-bridge
-mkdir -p ~/.claude/skills && cp -r codex-bridge/skills/codex-bridge ~/.claude/skills/
+git clone https://github.com/sahrizvi/codex-bridge /tmp/codex-bridge
+mkdir -p ~/.claude/skills
+cp -R /tmp/codex-bridge/skills/codex-bridge ~/.claude/skills/
 ```
 
-That makes it available in every project. For a single project, copy it to
-`.claude/skills/` inside that repo instead.
+This adds exactly one directory — `~/.claude/skills/codex-bridge`. Your other
+skills are untouched; the only thing it can replace is an earlier copy of
+itself. For a single project instead, copy it into that repo's
+`.claude/skills/`.
 
-Start a new Claude Code session — skills are discovered at startup — connect
-Remote Control, and you are done.
+Start a new Claude Code session (skills are discovered at startup), connect
+Remote Control, and you are done. No configuration.
 
-## Then just ask
+## What you can do
 
-Everything is conversational. You never touch a command.
+All of it is conversation. You never type a command.
+
+### See what a run is doing
 
 > **You:** what's codex doing?
 >
-> **Claude:** It's mid-turn in `~/code/your-project`, last event 23 seconds
-> ago. Its latest message: *"The warning milestone is committed as
-> `63591b8c`; clean compilation now passes with warnings-as-errors."* Last two
-> commands both exited 0 — a compile and a commit. Its 5-hour window is at
-> 81%, resetting at 16:12.
+> **Claude:** Mid-turn in `~/code/your-project`, last event 23 seconds ago.
+> Latest message: *"The warning milestone is committed as `63591b8c`; clean
+> compilation now passes with warnings-as-errors."* Its last two commands both
+> exited 0 — a compile and a commit.
+
+You get its own words, the commands it ran, and whether they succeeded — not a
+guess assembled from logs.
+
+### Tell working apart from stuck apart from stalled
 
 > **You:** is it stuck?
 >
-> **Claude:** No — idle rather than stuck. It finished its turn 6 minutes ago
-> and is waiting at the prompt. Nothing is running.
+> **Claude:** Not stuck — idle. It finished its turn 6 minutes ago and is
+> waiting at the prompt.
 
-> **You:** tell it to run the full suite before it commits anything else
+> **You:** is codex rate-limited?
+>
+> **Claude:** Yes. Its 5-hour window hit 100% about 20 minutes ago, mid-task.
+> It resets at 16:12. Zero credits to fall back on, so it's stopped until then.
+
+From outside the terminal, **working**, **idle**, and **silently out of
+budget** look identical. The third is the one that quietly costs you an
+afternoon, and it is the reason this exists.
+
+### Steer a run without going to your desk
+
+> **You:** tell codex to run the full suite before committing anything else
 >
 > **Claude:** Queued to the session in `~/code/your-project`. It'll pick that
 > up when it next reads input.
 
-Other things worth asking:
+> **You:** tell it to stop after the current commit and push
+>
+> **Claude:** Queued.
 
-- *which codex sessions are running?*
-- *what was that session originally asked to do?*
-- *what's the codex session in the review worktree doing?*
-- *check on the architecture audit session*
-- *is codex rate-limited?*
+Redirect a run that has gone the wrong way, add a constraint you forgot, or
+tell it to wrap up — from a phone, mid-commute.
 
-The last one matters more than it sounds. From outside the terminal,
-**working**, **idle**, and **silently out of budget** look identical — and the
-third is the one that quietly costs you an afternoon.
+### Keep track of several at once
+
+Review worktrees and other repos leave sessions behind, so you usually have
+more than one.
+
+> **You:** which codex sessions are running?
+>
+> **Claude:** Two. One in `~/code/your-project`, running, active 1 minute ago.
+> One in `/tmp/review-worktree-1182`, idle for two hours. Three older ones are
+> finished.
+
+Name the one you mean however is natural — **by directory** or **by what it
+was asked to do**:
+
+> **You:** what's the codex session in the review worktree doing?
+>
+> **You:** check on the architecture audit session
+>
+> **You:** what was that session originally asked to do?
+>
+> **Claude:** It was given the architecture-audit prompt on 21 Aug, on branch
+> `feat/tenancy` at commit `06e00be0` — running `gpt-5.6-sol` at low reasoning
+> effort.
+
+No UUIDs. Codex stores each session's opening prompt, so a few distinctive
+words are enough — which matters when you are on a phone.
 
 ## Worth knowing before you rely on it
 
@@ -155,8 +197,13 @@ project whenever the worktree's session was idle.
 
 ## Requirements
 
-Python 3.9+ (standard library only), and the `codex` CLI on `PATH` to send
-instructions. Set `CODEX_HOME` if Codex is not at `~/.codex`.
+Python 3.7+, standard library only — no packages to install. The `codex` CLI
+needs to be on `PATH` to send instructions; reading status does not use it.
+Set `CODEX_HOME` if Codex is not at `~/.codex`.
+
+Tested on 3.9 and 3.13. The floor is 3.7 because of
+`subprocess.run(capture_output=…)` and `datetime.fromisoformat`; the syntax
+itself parses back to 3.6.
 
 ## License
 
